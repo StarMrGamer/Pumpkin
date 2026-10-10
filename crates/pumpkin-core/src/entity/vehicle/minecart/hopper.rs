@@ -55,7 +55,8 @@ impl HopperMinecart {
                 }
                 let backup = stack.clone();
                 let one = source.remove_stack_specific(slot, 1);
-                if HopperBlockEntity::add_one_item(source.as_ref(), inventory.as_ref(), &one) {
+                if HopperBlockEntity::add_one_item(Some(source.as_ref()), inventory.as_ref(), &one)
+                {
                     return;
                 }
                 source.set_stack(slot, backup);
@@ -92,7 +93,8 @@ impl HopperMinecart {
                 }
                 (stack.clone(), stack.split(1))
             };
-            if HopperBlockEntity::add_one_item(inventory.as_ref(), inventory.as_ref(), &one) {
+            // Vanilla `addItem(Container, ItemEntity)` passes no source container.
+            if HopperBlockEntity::add_one_item(None, inventory.as_ref(), &one) {
                 let is_empty = {
                     let stack = item
                         .get_item_stack()

@@ -235,7 +235,7 @@ impl HopperBlockEntity {
                     //TODO WorldlyContainer
                     let _backup = item.clone();
                     let one_item = item.split(1);
-                    if Self::add_one_item(container.as_ref(), self, &one_item) {
+                    if Self::add_one_item(Some(container.as_ref()), self, &one_item) {
                         container.set_stack(i, item);
                         // If extracting from furnace output slot (index 2), drop XP as orbs
                         let furnace_output_slot: usize = 2;
@@ -300,7 +300,8 @@ impl HopperBlockEntity {
                             let is_empty = stack.is_empty();
                             (backup, one_item, is_empty)
                         };
-                        if Self::add_one_item(self, self, &one_item) {
+                        // Vanilla `addItem(Container, ItemEntity)` passes no source container.
+                        if Self::add_one_item(None, self, &one_item) {
                             if is_empty {
                                 item_entity.get_entity().remove();
                             }
@@ -415,7 +416,7 @@ impl HopperBlockEntity {
                     // `dst.is_empty()` branch and reports a transfer that never happened.
                     continue;
                 };
-                if Self::add_one_item(self, container.as_ref(), &extraction.one_item) {
+                if Self::add_one_item(Some(self), container.as_ref(), &extraction.one_item) {
                     return true;
                 }
                 if let Some(leftover) = self.put_back(slot, extraction) {
@@ -427,7 +428,11 @@ impl HopperBlockEntity {
         }
         false
     }
-    pub fn add_one_item(from: &dyn Inventory, to: &dyn Inventory, item: &ItemStack) -> bool {
+    pub fn add_one_item(
+        from: Option<&dyn Inventory>,
+        to: &dyn Inventory,
+        item: &ItemStack,
+    ) -> bool {
         let mut success = false;
         let to_empty = to.is_empty();
         for j in 0..to.size() {
@@ -449,7 +454,9 @@ impl HopperBlockEntity {
                         && let Some(hopper) = to.as_any().downcast_ref::<Self>()
                         && hopper.cooldown_time.load(Ordering::Relaxed) <= 8
                     {
-                        if let Some(from_hopper) = from.as_any().downcast_ref::<Self>() {
+                        if let Some(from_hopper) =
+                            from.and_then(|source| source.as_any().downcast_ref::<Self>())
+                        {
                             if from_hopper.cooldown_time.load(Ordering::Relaxed)
                                 >= hopper.cooldown_time.load(Ordering::Relaxed)
                             {
@@ -679,5 +686,20 @@ mod tests {
 
         assert_eq!(leftover.item_count, 1);
         assert_eq!(hopper.get_stack(0).item_count, max);
+    }
+
+    /// Vanilla `addItem(Container, ItemEntity)` passes no source container, so a hopper that
+    /// suctions a dropped item always gets the full cooldown, never the one tick skip.
+    #[test]
+    fn receiving_hopper_without_a_source_container_gets_the_full_cooldown() {
+        let to = HopperBlockEntity::new(BlockPos::new(0, 0, 0), FacingHopper::Down);
+        to.ticked_game_time.store(9, Ordering::Relaxed);
+
+        assert!(HopperBlockEntity::add_one_item(
+            None,
+            &to,
+            &ItemStack::new(1, &Item::DIAMOND)
+        ));
+        assert_eq!(to.cooldown_time.load(Ordering::Relaxed), 8);
     }
 }
